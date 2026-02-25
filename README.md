@@ -11,9 +11,7 @@
 | SAP FIORI FOR S4HANA           | 2023    | 03 (02/2025) FPS | sap.com    | SAP FIORI FOR SAP S/4HANA 2023               |
 | ABAP PLATFORM                  | 2023    | 03 (02/2025)     | sap.com    | ABAP PLATFORM 2023                           |
 
-Sim, exatamente!
-
-O Publish já foi feito via `/IWFND/V4_ADMIN` — o serviço está publicado e o metadata confirmou que está 100% funcional.
+---
 
 O que falta é apenas:
 
@@ -36,7 +34,7 @@ Resumindo o estado do projeto:
 | Launchpad Target Mapping | ⏳ Aguarda Basis |
 | Teste ALP | ⏳ Aguarda Basis |
 
-O desenvolvimento está completo. Quando o Basis resolver o cliente, são mais 30 minutos e tens o ALP a funcionar. Queres que atualize o README com este estado?
+---
 
 # SAP RAP - Analytical List Page (ALP) com Purchase Orders
 
