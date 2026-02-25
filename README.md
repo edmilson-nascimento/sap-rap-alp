@@ -10,3 +10,297 @@
 | SAP FIORI FES FOR S/4HANA      | 2023    | 03 (02/2025)     | sap.com    | SAP FIORI FES 2023 FOR S/4HANA               |
 | SAP FIORI FOR S4HANA           | 2023    | 03 (02/2025) FPS | sap.com    | SAP FIORI FOR SAP S/4HANA 2023               |
 | ABAP PLATFORM                  | 2023    | 03 (02/2025)     | sap.com    | ABAP PLATFORM 2023                           |
+
+
+# SAP RAP - Analytical List Page (ALP) com Purchase Orders
+
+Guia passo a passo para criar uma aplicação ALP no SAP S/4HANA 2023 on-premise usando o RAP (RESTful ABAP Programming Model).
+
+## Ambiente
+
+| Produto | Release | SP |
+|---|---|---|
+| S/4HANA ON PREMISE | 2023 | 04 (08/2025) |
+| ABAP PLATFORM | 2023 | 04 (08/2025) |
+| SAP FIORI FOR S4HANA | 2023 | 04 (08/2025) |
+
+## Visão Geral
+
+O ALP é um floor plan do Fiori Elements que combina:
+- **KPI Cards** no topo
+- **Gráfico interativo** no meio
+- **Tabela de dados** em baixo (reage aos filtros do gráfico)
+
+É 100% **read-only** — o objetivo é análise e visualização, não edição de dados.
+
+## Arquitetura (3 camadas)
+
+```
+ZI_PO_DIM_SUPPLIER   ← Dimension View (dados do fornecedor)
+ZI_PO_CUBE           ← Cube View (dados de PO + medidas)
+ZC_PO_QUERY          ← Query View (consumo no ALP)
+ZSD_PO_ANALYSIS      ← Service Definition
+ZSB_PO_ANALYSIS_UI   ← Service Binding (OData V4 - UI)
+ZC_PO_QUERY (DDLX)   ← Metadata Extension (anotações UI)
+```
+
+---
+
+## Artefato 1 — Dimension View
+
+**Nome:** `ZI_PO_DIM_SUPPLIER`  
+**Tipo:** Data Definition  
+**Tabela base:** `lfa1`
+
+```abap
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'PO Analysis - Supplier Dimension'
+
+@Analytics.dataCategory: #DIMENSION
+@VDM.viewType: #BASIC
+
+define view entity ZI_PO_DIM_SUPPLIER
+  as select from lfa1
+{
+  key lfa1.lifnr as Supplier,
+      lfa1.name1 as SupplierName,
+      lfa1.land1 as Country,
+      lfa1.ort01 as City
+}
+```
+
+---
+
+## Artefato 2 — Cube View
+
+**Nome:** `ZI_PO_CUBE`  
+**Tipo:** Data Definition  
+**Tabelas base:** `ekko`, `ekpo`  
+**Depende de:** `ZI_PO_DIM_SUPPLIER`
+
+```abap
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'PO Analysis - Cube'
+
+@Analytics.dataCategory: #CUBE
+@VDM.viewType: #BASIC
+
+define view entity ZI_PO_CUBE
+  as select from ekko
+  inner join ekpo on ekpo.ebeln = ekko.ebeln
+  association [0..1] to ZI_PO_DIM_SUPPLIER as _Supplier
+    on $projection.Supplier = _Supplier.Supplier
+{
+  key ekko.ebeln                                             as PurchaseOrder,
+  key ekpo.ebelp                                             as PurchaseOrderItem,
+      ekko.bukrs                                             as CompanyCode,
+      ekko.ekgrp                                             as PurchasingGroup,
+      @ObjectModel.foreignKey.association: '_Supplier'
+      ekko.lifnr                                             as Supplier,
+      ekko.bedat                                             as DocumentDate,
+      ekko.waers                                             as Currency,
+      ekko.bstyp                                             as DocumentCategory,
+      ekko.statu                                             as Status,
+      substring( cast( ekko.bedat as abap.char(8) ), 1, 6 ) as YearMonth,
+
+      @Semantics.amount.currencyCode: 'Currency'
+      @Aggregation.default: #SUM
+      ekpo.netwr                                             as NetValue,
+
+      _Supplier
+}
+```
+
+> **Nota:** `@Aggregation.default: #SUM` no `NetValue` define o campo como medida. Todos os outros campos são tratados automaticamente como dimensões pelo `#CUBE`.
+
+---
+
+## Artefato 3 — Query View
+
+**Nome:** `ZC_PO_QUERY`  
+**Tipo:** Data Definition  
+**Depende de:** `ZI_PO_CUBE`
+
+```abap
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'PO Analysis - Query'
+@Metadata.allowExtensions: true
+
+@Analytics.query: true
+@VDM.viewType: #CONSUMPTION
+
+define view entity ZC_PO_QUERY
+  as select from ZI_PO_CUBE
+{
+  key PurchaseOrder,
+  key PurchaseOrderItem,
+      CompanyCode,
+      PurchasingGroup,
+      Supplier,
+      DocumentDate,
+      YearMonth,
+      DocumentCategory,
+      Status,
+      Currency,
+
+      @Semantics.amount.currencyCode: 'Currency'
+      @Aggregation.default: #SUM
+      NetValue,
+
+      /* Textos via association */
+      _Supplier.SupplierName,
+      _Supplier.Country
+}
+```
+
+> **Nota:** `@Analytics.query: true` é a annotation que habilita o ALP. `@Metadata.allowExtensions: true` é obrigatório para a Metadata Extension funcionar.
+
+---
+
+## Artefato 4 — Metadata Extension
+
+**Nome:** `ZC_PO_QUERY`  
+**Tipo:** Metadata Extension  
+**Depende de:** `ZC_PO_QUERY` (Data Definition com `@Metadata.allowExtensions: true`)
+
+```abap
+@Metadata.layer: #CUSTOMER
+
+@UI.headerInfo: {
+  typeName: 'Purchase Order',
+  typeNamePlural: 'Purchase Orders'
+}
+
+@UI.chart: [{
+  qualifier: 'NetValueByGroup',
+  title: 'Net Value by Purchasing Group',
+  chartType: #BAR,
+  dimensions: ['PurchasingGroup'],
+  measures: ['NetValue']
+}]
+
+@UI.presentationVariant: [{
+  qualifier: 'Default',
+  sortOrder: [{ by: 'NetValue', direction: #DESC }],
+  visualizations: [{
+    type: #AS_CHART,
+    qualifier: 'NetValueByGroup'
+  }]
+}]
+
+annotate view ZC_PO_QUERY with
+{
+  @UI.lineItem: [{ position: 10, label: 'PO Number' }]
+  @UI.selectionField: [{ position: 10 }]
+  PurchaseOrder;
+
+  @UI.lineItem: [{ position: 20, label: 'Item' }]
+  PurchaseOrderItem;
+
+  @UI.lineItem: [{ position: 30, label: 'Company Code' }]
+  @UI.selectionField: [{ position: 20 }]
+  CompanyCode;
+
+  @UI.lineItem: [{ position: 40, label: 'Purch. Group' }]
+  @UI.selectionField: [{ position: 30 }]
+  PurchasingGroup;
+
+  @UI.lineItem: [{ position: 50, label: 'Supplier' }]
+  @UI.selectionField: [{ position: 40 }]
+  Supplier;
+
+  @UI.lineItem: [{ position: 60, label: 'Supplier Name' }]
+  SupplierName;
+
+  @UI.lineItem: [{ position: 70, label: 'Doc. Date' }]
+  @UI.selectionField: [{ position: 50 }]
+  DocumentDate;
+
+  @UI.lineItem: [{ position: 80, label: 'Year/Month' }]
+  YearMonth;
+
+  @UI.lineItem: [{ position: 90, label: 'Net Value' }]
+  NetValue;
+
+  @UI.lineItem: [{ position: 100, label: 'Currency' }]
+  Currency;
+}
+```
+
+---
+
+## Artefato 5 — Service Definition
+
+**Nome:** `ZSD_PO_ANALYSIS`  
+**Tipo:** Service Definition
+
+```abap
+@EndUserText.label: 'PO Analysis - Service Definition'
+define service ZSD_PO_ANALYSIS {
+  expose ZC_PO_QUERY as PurchaseOrderAnalysis;
+}
+```
+
+---
+
+## Artefato 6 — Service Binding
+
+**Nome:** `ZSB_PO_ANALYSIS_UI`  
+**Tipo:** Service Binding
+
+| Campo | Valor |
+|---|---|
+| Name | `ZSB_PO_ANALYSIS_UI` |
+| Description | `PO Analysis - Service Binding` |
+| Binding Type | `OData V4 - UI` |
+| Service Definition | `ZSD_PO_ANALYSIS` |
+
+---
+
+## Publicar o Serviço
+
+### Opção A — Pelo ADT (requer cliente de desenvolvimento)
+1. Abrir o `ZSB_PO_ANALYSIS_UI` no ADT
+2. Clicar em **Publish**
+
+### Opção B — Pela transação `/n/IWFND/V4_ADMIN` (alternativa)
+1. Aceder à transação `/n/IWFND/V4_ADMIN` no SAP GUI
+2. Localizar o grupo de serviços `ZSB_PO_ANALYSIS_UI`
+3. Registar o serviço manualmente
+
+> **Nota:** Se o Publish no ADT falhar com o erro `"Publishing in Customizing Client not allowed"`, significa que o cliente SAP não está configurado como cliente de desenvolvimento. Usar a Opção B como alternativa.
+
+---
+
+## Testar a Aplicação
+
+Após publicar, clicar em **Preview...** na entidade `PurchaseOrderAnalysis` dentro do Service Binding no ADT.
+
+A URL do serviço segue o padrão:
+```
+/sap/opu/odata4/sap/zsb_po_analysis_ui/srvd/sap/zsd_po_analysis/0001/
+```
+
+---
+
+## Ordem de Ativação
+
+Respeitar sempre esta ordem:
+
+```
+1. ZI_PO_DIM_SUPPLIER
+2. ZI_PO_CUBE
+3. ZC_PO_QUERY  (Data Definition)
+4. ZC_PO_QUERY  (Metadata Extension)
+5. ZSD_PO_ANALYSIS
+6. ZSB_PO_ANALYSIS_UI
+```
+
+---
+
+## Notas Importantes
+
+- Em **ABAP Cloud** (BTP/S/4HANA Cloud), tabelas físicas como `EKKO`, `EKPO`, `LFA1` **não são permitidas**. Usar as Released APIs: `I_PurchaseOrderAPI01`, `I_PurchaseOrderItemAPI01`, `I_Supplier`.
+- Em **S/4HANA on-premise**, tabelas físicas são permitidas.
+- A annotation `@Analytics.dimension` pode não estar disponível em todos os releases on-premise. O sistema infere dimensões automaticamente pelo `@Analytics.dataCategory: #CUBE`.
+- O ALP é **100% read-only** — para edição, navegar para um Object Page separado.
