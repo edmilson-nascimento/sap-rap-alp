@@ -1,11 +1,7 @@
 # sap-rap-alv
 
 
-S4HANA ON PREMISE	2023	03 (02/2025) FPS	sap.com	SAP S/4HANA 2023
-SAP S/4HANA FOUNDATION	2023	03 (02/2025) FPS	sap.com	SAP S/4HANA FOUNDATION 2023
-SAP FIORI FES FOR S/4HANA	2023	03 (02/2025)	sap.com	SAP FIORI FES 2023 FOR S/4HANA
-SAP FIORI FOR S4HANA	2023	03 (02/2025) FPS	sap.com	SAP FIORI FOR SAP S/4HANA 2023
-ABAP PLATFORM	2023	03 (02/2025)	sap.com	ABAP PLATFORM 2023
+
 
 | Produto                        | Release | Pilha SP         | Fabricante | Descrição breve do produto                  |
 |--------------------------------|---------|------------------|------------|----------------------------------------------|
