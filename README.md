@@ -287,12 +287,62 @@ define service ZSD_PO_ANALYSIS {
 1. Abrir o `ZSB_PO_ANALYSIS_UI` no ADT
 2. Clicar em **Publish**
 
-### Opção B — Pela transação `/n/IWFND/V4_ADMIN` (alternativa)
+### Opção B — Pela transação `/n/IWFND/V4_ADMIN` (alternativa para clientes Customizing)
 1. Aceder à transação `/n/IWFND/V4_ADMIN` no SAP GUI
-2. Localizar o grupo de serviços `ZSB_PO_ANALYSIS_UI`
-3. Registar o serviço manualmente
+2. Clicar em **Publish Service Groups**
+3. Selecionar o **System Alias** e clicar em **Get Service Groups**
+4. Selecionar o grupo correspondente ao serviço `ZSD_PO_ANALYSIS`
+5. Clicar em **Publish Service Groups**
+6. Voltar ao ADT e fazer **F5 (Refresh)** no Service Binding — o serviço aparecerá como publicado
 
-> **Nota:** Se o Publish no ADT falhar com o erro `"Publishing in Customizing Client not allowed"`, significa que o cliente SAP não está configurado como cliente de desenvolvimento. Usar a Opção B como alternativa.
+> **Nota:** Se o Publish no ADT falhar com o erro `"Publishing in Customizing Client not allowed"`, significa que o cliente SAP não está configurado como cliente de desenvolvimento. Consultar a secção [Troubleshooting](#troubleshooting) abaixo.
+
+---
+
+## Troubleshooting
+
+### Erro: "(Un-)Publishing of SRVB in Customizing Client not allowed"
+
+Ao tentar publicar o Service Binding pelo ADT (botão **Publish**), o sistema retorna:
+
+```
+Publishing local service endpoint of Service Binding "ZSB_PO_ANALYSIS_UI" has encountered a problem.
+Local Publish of ZSB_PO_ANALYSIS_UI failed
+
+(Un-)Publishing of SRVB ZSB_PO_ANALYSIS_UI in Customizing Client not allowed
+```
+
+![Erro de publicação em Customizing Client](images/publish_customizing_client_error.png)
+
+**Causa raiz:** O client role na transação `SCC4` está configurado como **C — Customizing** (ou a opção "Changes and transports for client-specific objects" está definida como "Automatic recording of changes" ou "No changes allowed"). Nesta configuração, o ADT não consegue publicar serviços OData V4 localmente.
+
+**Referência SAP:** [SAP Note 3101976](https://me.sap.com/notes/3101976) — *Publishing OData V4 service is throwing error: Publishing of XXXXXXXXXX in Customizing Client not allowed*
+
+**Soluções:**
+
+| # | Solução | Quando usar |
+|---|---|---|
+| 1 | **Usar `/IWFND/V4_ADMIN`** | ✅ Recomendada — funciona sem alterar configurações do client |
+| 2 | **Alterar o client role na `SCC4`** | Requer Basis e pode não ser viável em ambientes controlados |
+
+#### Solução 1 — Publicar via `/IWFND/V4_ADMIN` (Recomendada)
+
+1. **Ativar** o Service Binding no ADT (isto cria o service group automaticamente, mas **não clicar** em Publish)
+2. No SAP GUI, executar a transação **`/n/IWFND/V4_ADMIN`**
+3. Clicar em **Publish Service Groups**
+4. Selecionar o **System Alias** (ex: `LOCAL`) e clicar em **Get Service Groups**
+5. Selecionar o grupo correspondente (ex: `ZSB_PO_ANALYSIS_UI`) e clicar em **Publish Service Groups**
+6. Se o client estiver com "Automatic recording of changes", o sistema solicitará um **Customizing Transport Request**
+7. Voltar ao ADT e fazer **F5 (Refresh)** no Service Binding — o estado mudará para **Published**
+
+#### Solução 2 — Alterar o Client Role na SCC4
+
+> ⚠️ **Atenção:** Esta alteração afeta todo o client e requer autorização de Basis. Não recomendada em ambientes de qualidade ou produção.
+
+1. Executar a transação **`SCC4`**
+2. Selecionar o client e clicar em **Change**
+3. Alterar o **Client Role** de **C — Customizing** para **D — Development/Test** (ou equivalente que permita alterações)
+4. Gravar e voltar ao ADT para publicar normalmente
 
 ---
 
