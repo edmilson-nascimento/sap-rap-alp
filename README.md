@@ -344,11 +344,89 @@ Local Publish of ZSB_PO_ANALYSIS_UI failed
 3. Alterar o **Client Role** de **C — Customizing** para **D — Development/Test** (ou equivalente que permita alterações)
 4. Gravar e voltar ao ADT para publicar normalmente
 
+### Erro: "FETCH API (direct DB access) is not supported for entity ZC_PO_QUERY"
+
+Ao tentar fazer **Preview** do Service Binding no ADT (tanto OData V4 como V2), o sistema retorna:
+
+```
+FETCH API (direct DB access) is not supported for entity ZC_PO_QUERY
+An exception was raised
+```
+
+![Erro FETCH API no preview do ADT](images/fetch_api_direct_db_access_error.png)
+
+**Causa raiz:** A annotation `@Analytics.query: true` na Query View transforma a CDS view entity numa **entidade transiente** (transient entity). Entidades transientes não geram uma SQL view na base de dados — elas só podem ser consumidas pelo **Analytics Engine (OLAP)** do SAP. O preview do ADT tenta fazer um acesso SQL directo (FETCH API), que não é suportado para este tipo de entidade.
+
+**Importante:** Este erro ocorre **independentemente da versão OData** (V2 ou V4). Não é um problema do protocolo — é uma limitação do preview do ADT com entidades analíticas.
+
+**Referências:**
+- [SAP Community — CDS Data Model for Analytical List Page](https://community.sap.com/t5/technology-q-a/cds-data-model-for-analytical-list-page/qaq-p/13900553)
+- [SAP Community — FETCH API not supported for entity (BTP)](https://community.sap.com/t5/technology-q-a/abap-enviornment-in-btp-fetch-api-direct-db-access-is-not-supported-for/qaq-p/13596667)
+
+**Soluções:**
+
+| # | Solução | Quando usar |
+|---|---|---|
+| 1 | **Testar via Fiori Launchpad** | ✅ Caminho standard — requer catálogo, target mapping e tile configurados |
+| 2 | **Remover `@Analytics.query: true`** | Alternativa — usar apenas `@Aggregation.default` nos campos de medida |
+| 3 | **Validar metadata via URL** | Verificação parcial — confirma que o serviço está publicado e funcional |
+
+#### Solução 1 — Testar via Fiori Launchpad (Caminho Standard)
+
+O ALP com `@Analytics.query: true` **só funciona correctamente quando executado via Fiori Launchpad**, onde o Analytics Engine (OLAP) é invocado. Para isso, é necessário:
+
+1. Service Binding **publicado** (via ADT ou `/IWFND/V4_ADMIN`)
+2. **Catálogo** criado no Fiori Launchpad (`/UI2/FLPD_CUST`)
+3. **Target Mapping** configurado (Semantic Object + Action)
+4. **Tile** criado no catálogo
+5. Catálogo **atribuído a um role** (`PFCG`)
+
+> ⚠️ Em ambientes com client role **C — Customizing**, os passos 2-5 podem estar bloqueados e requerem intervenção do Basis.
+
+#### Solução 2 — Remover `@Analytics.query: true` (Alternativa)
+
+Para cenários onde o preview no ADT é necessário (POC, desenvolvimento, testes rápidos), é possível construir um ALP **sem** a annotation `@Analytics.query: true`. Basta manter os campos de medida anotados com `@Aggregation.default: #SUM` na CDS view de consumo:
+
+```abap
+@Semantics.amount.currencyCode: 'Currency'
+@Aggregation.default: #SUM
+NetValue,
+```
+
+Com esta abordagem:
+- ✅ O preview do ADT funciona
+- ✅ O ALP exibe gráficos, filtros e tabela
+- ✅ Compatível com RAP e Fiori Elements
+- ❌ Perde funcionalidades avançadas do motor OLAP (exception aggregation, calculated measures OLAP-specific)
+
+> **Nota:** Vários ALPs standard da SAP utilizam esta abordagem sem `@Analytics.query: true`, usando apenas as annotations `@Aggregation.default` nos campos de medida e `@Analytics.dataCategory: #CUBE` na view base.
+
+#### Solução 3 — Validar Metadata via URL (Verificação Parcial)
+
+Mesmo sem conseguir fazer preview completo, é possível confirmar que o serviço está correctamente publicado acedendo à URL do metadata no browser:
+
+```
+/sap/opu/odata4/sap/zsb_po_analysis_ui/srvd/sap/zsd_po_analysis/0001/$metadata
+```
+
+Se o metadata for retornado com as entidades e annotations esperadas, o serviço está funcional e pronto para ser consumido pelo Fiori Launchpad.
+
 ---
 
 ## Testar a Aplicação
 
-Após publicar, clicar em **Preview...** na entidade `PurchaseOrderAnalysis` dentro do Service Binding no ADT.
+> ⚠️ **Atenção:** Se a Query View utiliza `@Analytics.query: true`, o **preview do ADT não funciona** (ver [Troubleshooting](#erro-fetch-api-direct-db-access-is-not-supported-for-entity-zc_po_query)). O teste deve ser feito via **Fiori Launchpad**.
+
+### Via Fiori Launchpad (obrigatório para `@Analytics.query: true`)
+
+1. Configurar catálogo, target mapping e tile no Launchpad
+2. Aceder ao Fiori Launchpad e abrir a app pelo tile
+
+### Via Preview do ADT (apenas sem `@Analytics.query: true`)
+
+Clicar em **Preview...** na entidade `PurchaseOrderAnalysis` dentro do Service Binding no ADT.
+
+### Validar o Serviço via URL
 
 A URL do serviço segue o padrão:
 ```
