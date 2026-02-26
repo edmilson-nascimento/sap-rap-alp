@@ -16,7 +16,8 @@
 O que falta é apenas:
 
 - ✅ ~~Publish do Service Binding~~ — **feito via `/IWFND/V4_ADMIN`**
-- ⏳ Criar catálogo e Target Mapping no Launchpad — **bloqueado pelo cliente Customizing**
+- ✅ ~~Criar catálogo e Target Mapping no Launchpad~~ — **feito via `/UI2/FLPD_CUST`**
+- ⏳ Atribuir catálogo ao role do utilizador — **Aguarda Basis (PFCG)**
 - ⏳ Testar a app ALP completa — **depende do ponto anterior**
 
 ---
@@ -30,9 +31,12 @@ Resumindo o estado do projeto:
 | `ZC_PO_QUERY` | ✅ Ativo |
 | `ZC_PO_QUERY` (Metadata Extension) | ✅ Ativo |
 | `ZSD_PO_ANALYSIS` | ✅ Ativo |
-| `ZSB_PO_ANALYSIS_UI` | ✅ Ativo e Publicado |
-| Launchpad Target Mapping | ⏳ Aguarda Basis |
-| Teste ALP | ⏳ Aguarda Basis |
+| `ZSB_PO_ANALYSIS_UI` | ✅ Ativo e Publicado (via `/IWFND/V4_ADMIN`) |
+| Launchpad Catálogo (`ZC_PO_ANALYSIS`) | ✅ Criado |
+| Launchpad Target Mapping (`PurchaseOrder-analyze`) | ✅ Criado |
+| Launchpad Tile (App Launcher — Static) | ✅ Criado |
+| Atribuição do catálogo ao role (PFCG) | ⏳ Aguarda Basis |
+| Teste ALP no Fiori Launchpad | ⏳ Aguarda Basis |
 
 ---
 
@@ -413,14 +417,98 @@ Se o metadata for retornado com as entidades e annotations esperadas, o serviço
 
 ---
 
+## Configurar o Fiori Launchpad
+
+O ALP com `@Analytics.query: true` **só pode ser testado via Fiori Launchpad** — o preview do ADT não funciona (ver [Troubleshooting](#erro-fetch-api-direct-db-access-is-not-supported-for-entity-zc_po_query)). A configuração é feita na transação `/UI2/FLPD_CUST`.
+
+### Passo 1 — Criar o Catálogo
+
+1. Executar a transação **`/UI2/FLPD_CUST`**
+2. Em **Catalogs**, clicar no **"+"** para criar um novo catálogo
+3. Preencher:
+
+| Campo | Valor |
+|---|---|
+| Catalog ID | `ZC_PO_ANALYSIS` |
+| Title | `PO Analysis` |
+
+4. Gravar
+
+### Passo 2 — Criar o Target Mapping
+
+Dentro do catálogo `ZC_PO_ANALYSIS`:
+
+1. Clicar no ícone **Target Map...** e depois no **"+"**
+2. Preencher o **Intent** (lado esquerdo):
+
+| Campo | Valor |
+|---|---|
+| Semantic Object | `PurchaseOrder` *(selecionar do matchcode — é o standard SAP)* |
+| Action | `analyze` *(digitar manualmente)* |
+
+3. Preencher o **Target** (lado direito):
+
+| Campo | Valor |
+|---|---|
+| Application Type | `SAPUI5 Fiori App` |
+| Title | `PO Analysis` |
+| URL | `/sap/bc/ui5_ui5/sap/zsb_po_analysis_ui/` |
+| ID | `zsb_po_analysis_ui` |
+
+4. Preencher o **General** (em baixo):
+
+| Campo | Valor |
+|---|---|
+| Information | `Purchase Order Analysis - ALP` |
+| Device Types | ✅ Desktop, ✅ Tablet |
+
+5. Gravar
+
+> **Nota:** O campo **ID** é obrigatório. Usar o nome do Service Binding em minúsculas.
+
+### Passo 3 — Criar o Tile
+
+Dentro do catálogo `ZC_PO_ANALYSIS`:
+
+1. Clicar no ícone **Tiles** e depois no **"+"**
+2. Selecionar o template **App Launcher — Static**
+3. Preencher:
+
+| Campo | Valor |
+|---|---|
+| Title | `PO Analysis` |
+| Subtitle | `Purchase Orders` |
+| Icon | `sap-icon://bar-chart` |
+| Semantic Object | `PurchaseOrder` |
+| Action | `analyze` |
+
+4. Gravar
+
+> **Importante:** O Semantic Object + Action do tile **devem coincidir exactamente** com o Target Mapping. É este par que faz o link entre o tile e a app.
+
+### Passo 4 — Atribuir o Catálogo a um Role (PFCG)
+
+> ⚠️ Este passo requer acesso à transação **PFCG** (Role Maintenance). Se não tiveres acesso, pedir ao Basis.
+
+1. Executar a transação **`PFCG`**
+2. Editar o role atribuído ao utilizador
+3. No separador **Menu**, clicar em **Add** → **SAP Fiori Tile Catalog**
+4. Inserir o Catalog ID: **`ZC_PO_ANALYSIS`**
+5. Gravar e **gerar o perfil** (separador Authorizations → Generate)
+
+Após a atribuição, fazer **logout/login** no Fiori Launchpad. O tile aparecerá no **App Finder**.
+
+---
+
 ## Testar a Aplicação
 
 > ⚠️ **Atenção:** Se a Query View utiliza `@Analytics.query: true`, o **preview do ADT não funciona** (ver [Troubleshooting](#erro-fetch-api-direct-db-access-is-not-supported-for-entity-zc_po_query)). O teste deve ser feito via **Fiori Launchpad**.
 
 ### Via Fiori Launchpad (obrigatório para `@Analytics.query: true`)
 
-1. Configurar catálogo, target mapping e tile no Launchpad
-2. Aceder ao Fiori Launchpad e abrir a app pelo tile
+1. Aceder ao Fiori Launchpad: `https://<host>:<port>/sap/bc/ui2/flp`
+2. Abrir o **App Finder** e procurar por "PO Analysis"
+3. Clicar no tile para abrir a app
 
 ### Via Preview do ADT (apenas sem `@Analytics.query: true`)
 
@@ -440,12 +528,16 @@ A URL do serviço segue o padrão:
 Respeitar sempre esta ordem:
 
 ```
-1. ZI_PO_DIM_SUPPLIER
-2. ZI_PO_CUBE
-3. ZC_PO_QUERY  (Data Definition)
-4. ZC_PO_QUERY  (Metadata Extension)
-5. ZSD_PO_ANALYSIS
-6. ZSB_PO_ANALYSIS_UI
+1. ZI_PO_DIM_SUPPLIER          (Data Definition — Dimension View)
+2. ZI_PO_CUBE                  (Data Definition — Cube View)
+3. ZC_PO_QUERY                 (Data Definition — Query View)
+4. ZC_PO_QUERY                 (Metadata Extension — Anotações UI)
+5. ZSD_PO_ANALYSIS             (Service Definition)
+6. ZSB_PO_ANALYSIS_UI          (Service Binding — OData V4 UI)
+7. Publicar serviço             (ADT ou /IWFND/V4_ADMIN)
+8. Catálogo + Target Mapping    (/UI2/FLPD_CUST)
+9. Tile                         (/UI2/FLPD_CUST)
+10. Atribuir catálogo ao role   (PFCG)
 ```
 
 ---
